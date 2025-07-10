@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>whosaid</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='12' fill='%23d9482b'/%3E%3Cpath fill='white' d='M12 14a2.5 2.5 0 0 0 2.5-2.5v-5a2.5 2.5 0 0 0-5 0v5A2.5 2.5 0 0 0 12 14Zm4-2.5a4 4 0 0 1-8 0H6.5a5.5 5.5 0 0 0 4.75 5.45V19h1.5v-2.05a5.5 5.5 0 0 0 4.75-5.45H16Z'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f5f2; --surface: #ffffff; --border: #e3e1dc; --text: #1d1c1a;
+    --muted: #77736b; --accent: #d9482b; --accent-soft: #fbe6e1; --meter: #2f8a57; --me: #1d1c1a;
+    --s0: #2a6fdb; --s1: #c2410c; --s2: #15803d; --s3: #9333ea; --s4: #be185d; --s5: #0e7490;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161614; --surface: #1f1f1c; --border: #33322e; --text: #ecebe7;
+      --muted: #9a968d; --accent: #ef6a4c; --accent-soft: #3a221c; --meter: #5cc28a; --me: #ecebe7;
+      --s0: #7aa7f5; --s1: #f59e6b; --s2: #6fd39a; --s3: #c79bf7; --s4: #f48fbf; --s5: #5cc9dc;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 32px 16px 48px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .stats { color: var(--muted); font: 13px var(--mono); }
+
+  .panel {
+    margin-top: 20px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  }
+  #toggle {
+    width: 64px; height: 64px; border-radius: 50%; border: 0; cursor: pointer; flex: none;
+    background: var(--accent); color: #fff; display: grid; place-items: center;
+    transition: transform .1s, box-shadow .2s;
+  }
+  #toggle:active { transform: scale(.95); }
+  #toggle[aria-pressed=true] { box-shadow: 0 0 0 6px var(--accent-soft); }
+  #toggle:disabled { opacity: .6; cursor: progress; }
+  #toggle svg { width: 26px; height: 26px; }
+  .meter-wrap { flex: 1 1 200px; min-width: 0; }
+  .status { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+  .status b { color: var(--text); font-weight: 600; }
+  .meter { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; position: relative; }
+  .meter i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--meter); transition: width 80ms linear; }
+  .settings { display: flex; gap: 10px; flex-wrap: wrap; width: 100%; }
+  label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 0; }
+  select {
+    width: 100%; font: inherit; font-size: 14px; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
+  }
+  select:disabled { opacity: .5; }
+  .note { width: 100%; margin: 0; font-size: 12px; color: var(--muted); }
+  .note[hidden] { display: none; }
+
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin: 24px 0 8px; gap: 8px; flex-wrap: wrap; }
+  .toolbar h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; }
+  .toolbar div { display: flex; gap: 6px; }
+  .btn {
+    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  .btn:hover { border-color: var(--muted); }
+
+  #speakers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  #speakers:empty { display: none; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 13px;
+  }
+  .chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+  .chip button { font: inherit; border: 0; background: none; padding: 0; color: var(--text); cursor: text; }
+  .chip input {
+    font: inherit; width: 12ch; border: 0; outline: 0; padding: 0; background: none; color: var(--text);
+    border-bottom: 1px solid var(--c);
+  }
+
+  #transcript {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    min-height: 320px; max-height: 62vh; overflow-y: auto; padding: 8px 0;
+  }
+  .para { padding: 10px 18px; }
+  .para.cont { padding-top: 0; }
+  .para:not(.cont) + .para:not(.cont), .para.cont + .para:not(.cont) { border-top: 1px solid var(--border); }
+  .meta { display: flex; align-items: baseline; gap: 10px; margin-bottom: 2px; }
+  .who {
+    font: inherit; font-size: 14px; font-weight: 650; border: 0; background: none; padding: 0;
+    cursor: pointer; color: var(--c);
+  }
+  .who:hover { text-decoration: underline; }
+  .meta time { font: 12px var(--mono); color: var(--muted); }
+  .para p { margin: 0; overflow-wrap: anywhere; }
+  .interim { color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; padding: 120px 16px; font-size: 15px; }
+  #transcript:not(.is-empty) .empty { display: none; }
+  #error {
+    display: none; margin-top: 12px; padding: 10px 14px; border-radius: 10px;
+    background: var(--accent-soft); color: var(--accent); font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>whosaid</h1>
+    <span class="stats" id="stats">00:00 · 0 speakers</span>
+  </header>
+
+  <section class="panel">
+    <button id="toggle" aria-label="Start transcribing" aria-pressed="false" title="Start / stop (Space)">
+      <svg viewBox="0 0 24 24" fill="currentColor" id="icon"></svg>
+    </button>
+    <div class="meter-wrap">
+      <div class="status" id="status">Press the mic to start. Words appear as they're spoken.</div>
+      <div class="meter" title="Input level"><i id="level"></i></div>
+    </div>
+    <div class="settings">
+      <label>Source
+        <select id="source">
+          <option value="mic">Microphone</option>
+          <option value="system">Computer audio (tab / screen)</option>
+          <option value="both">Computer audio + my mic</option>
+        </select>
+      </label>
+      <label>Microphone <select id="device"><option value="">Default</option></select></label>
+      <label>Language
+        <select id="language">
+          <option value="en">English</option>
+          <option value="multi">Multilingual (mixed languages)</option>
+          <option value="es">Spanish</option><option value="fr">French</option>
+          <option value="de">German</option><option value="pt">Portuguese</option>
+          <option value="it">Italian</option><option value="nl">Dutch</option>
+          <option value="hi">Hindi</option><option value="ja">Japanese</option>
+        </select>
+      </label>
+      <p class="note" id="note" hidden></p>
+    </div>
+  </section>
+  <div id="error" role="alert"></div>
+
+  <div class="toolbar">
+    <h2>Transcript</h2>
+    <div>
+      <button class="btn" id="copy">Copy</button>
+      <button class="btn" id="download">Download</button>
+      <button class="btn" id="clear">Clear</button>
+    </div>
+  </div>
+  <div id="speakers" title="Click a name to rename"></div>
+  <div id="transcript" class="is-empty" aria-live="polite">
+    <div class="empty">Your transcript will appear here.</div>
+    <div id="live"></div>
+  </div>
+</main>
+
+<script src="core.js"></script>
+<script>
+const { fmt, speakerKey, wordText, Transcript, pendingRuns, listenParams, parseResult,
+  trimByAge, firstUnfinalisedFrame, chunksFrom, PcmChunker } = Core;
+
+const MIC = '<path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/>';
+const STOP = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+const MAX_RETRIES = 6;
+const MAX_BACKLOG_S = 60; // audio kept for reconnects
+const STORE_KEY = 'transcript-v3';
+const NOTES = {
+  system: 'In the share prompt pick a tab (keep "Share tab audio" on) or Entire screen (turn on "Share system audio").',
+  both: 'Your mic is labelled "You". Use earphones so the mic doesn\'t pick up the other side too.',
+};
+
+// Captures 16-bit PCM in ~100 ms chunks (interleaved when stereo) plus a level reading.
+const WORKLET = `${PcmChunker}
+class PcmTap extends AudioWorkletProcessor {
+  constructor() { super(); this.chunker = new PcmChunker(Math.round(sampleRate / 10)); }
+  process(inputs) {
+    for (const chunk of this.chunker.push(inputs[0])) this.port.postMessage(chunk, [chunk.pcm]);
+    return true;
+  }
+}
+registerProcessor('pcm-tap', PcmTap);`;
+const workletUrl = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
+
+const $ = id => document.getElementById(id);
+const els = {
+  toggle: $('toggle'), icon: $('icon'), status: $('status'), level: $('level'), note: $('note'),
+  transcript: $('transcript'), live: $('live'), speakers: $('speakers'), stats: $('stats'), error: $('error'),
+  device: $('device'), language: $('language'), source: $('source'),
+};
+
+let doc = new Transcript();
+let offsetMs = 0; // transcript clock at the start of the next session
+let session = null;
+let connSeq = 0;
+
+function load() {
+  try {
+    const read = k => JSON.parse(localStorage.getItem(k) || 'null');
+    doc = Transcript.fromStorage(read(STORE_KEY), read('transcript-v2'));
+  } catch {}
+  offsetMs = doc.lines.length ? doc.endMs() + 1000 : 0;
+}
+
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(doc)); } catch {}
+}
+
+const colorOf = key => {
+  const i = doc.colorIndex(key);
+  return i < 0 ? 'var(--me)' : `var(--s${i})`;
+};
+
+function showError(msg) {
+  els.error.textContent = msg;
+  els.error.style.display = msg ? 'block' : 'none';
+}
+
+function setStatus(html) { els.status.innerHTML = html; }
+
+const msOf = (s, conn, sec) => s.offset + ((conn.startFrame ?? 0) / s.rate + sec) * 1000;
+
+function commit(s, conn, channel, words) {
+  for (const w of words) {
+    const key = speakerKey(s.mode, conn.id, channel, w.speaker);
+    doc.addWord(key, msOf(s, conn, w.start), msOf(s, conn, w.end), wordText(w), s.newParagraph);
+    s.newParagraph = false;
+  }
+  save();
+}
+
+function interimRuns(s) {
+  if (!s) return [];
+  return pendingRuns(Object.entries(s.interim).map(([channel, { conn, words }]) => ({
+    channel,
+    words: words.map(w => ({
+      key: speakerKey(s.mode, conn.id, +channel, w.speaker), t: msOf(s, conn, w.start), text: wordText(w),
+    })),
+  })));
+}
+
+// ---------- rendering ----------
+
+const view = { nodes: [], full: true, speakersSig: '', editing: null };
+
+function para(l, prev, interim) {
+  const div = document.createElement('div');
+  div.className = 'para';
+  div.style.setProperty('--c', colorOf(l.key));
+  if (doc.isContinuation(prev, l)) div.classList.add('cont');
+  else {
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const who = document.createElement('button');
+    who.className = 'who';
+    who.textContent = doc.nameOf(l.key);
+    who.title = 'Rename';
+    who.onclick = () => startRename(l.key);
+    const time = document.createElement('time');
+    time.textContent = fmt(l.t);
+    meta.append(who, time);
+    div.append(meta);
+  }
+  const p = document.createElement('p');
+  p.textContent = l.text;
+  if (interim) {
+    const span = document.createElement('span');
+    span.className = 'interim';
+    span.textContent = (l.text ? ' ' : '') + interim;
+    p.append(span);
+  }
+  div.append(p);
+  return div;
+}
+
+function render() {
+  const box = els.transcript;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  if (view.full) {
+    view.nodes.forEach(n => n.remove());
+    view.nodes = [];
+    view.full = false;
+  }
+
+  const s = session;
+  const lines = doc.lines;
+  const pending = interimRuns(s);
+  const lastIdx = lines.length - 1;
+  let joinText = null;
+  if (pending.length && lastIdx >= 0 && !s.newParagraph && pending[0].key === lines[lastIdx].key) {
+    joinText = pending.shift().text;
+  }
+
+  // Only the previous tail paragraph and anything new can have changed.
+  for (let i = Math.max(0, view.nodes.length - 1); i < lines.length; i++) {
+    const node = para(lines[i], lines[i - 1], i === lastIdx ? joinText : null);
+    if (view.nodes[i]) view.nodes[i].replaceWith(node);
+    else box.insertBefore(node, els.live);
+    view.nodes[i] = node;
+  }
+  let prev = lines[lastIdx];
+  els.live.replaceChildren(...pending.map(r => {
+    const node = para({ key: r.key, t: r.t, text: '' }, prev, r.text);
+    prev = { key: r.key, end: r.t };
+    return node;
+  }));
+
+  box.classList.toggle('is-empty', !lines.length && !pending.length);
+  if (atBottom) box.scrollTop = box.scrollHeight;
+
+  const people = doc.peopleCount();
+  const elapsed = s ? s.offset + (s.frames / s.rate) * 1000 : offsetMs;
+  els.stats.textContent = `${fmt(elapsed)} · ${people} speaker${people === 1 ? '' : 's'}`;
+  renderSpeakers();
+}
+
+function renderSpeakers() {
+  const keys = doc.speakerKeys();
+  const sig = keys.map(k => k + '=' + doc.nameOf(k)).join('|');
+  if (view.editing || sig === view.speakersSig) return;
+  view.speakersSig = sig;
+  els.speakers.replaceChildren(...keys.map(key => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.dataset.key = key;
+    chip.style.setProperty('--c', colorOf(key));
+    const btn = document.createElement('button');
+    btn.textContent = doc.nameOf(key);
+    btn.onclick = () => startRename(key);
+    chip.append(btn);
+    return chip;
+  }));
+}
+
+function startRename(key) {
+  const chip = [...els.speakers.children].find(c => c.dataset.key === key);
+  if (!chip || view.editing) return;
+  view.editing = key;
+  const input = document.createElement('input');
+  input.value = doc.names[key] || '';
+  input.placeholder = doc.nameOf(key);
+  input.setAttribute('aria-label', `Rename ${doc.nameOf(key)}`);
+  chip.replaceChildren(input);
+  input.focus();
+  let done = false;
+  const finish = keep => {
+    if (done) return;
+    done = true;
+    view.editing = null;
+    if (keep) {
+      doc.rename(key, input.value);
+      save();
+    }
+    view.speakersSig = '';
+    view.full = true;
+    render();
+  };
+  input.onkeydown = e => {
+    if (e.key === 'Enter') finish(true);
+    if (e.key === 'Escape') finish(false);
+  };
+  input.onblur = () => finish(true);
+}
+
+// ---------- audio capture ----------
+
+async function getDisplayAudio() {
+  const display = await navigator.mediaDevices.getDisplayMedia({
+    video: true, // Chrome requires video; it's never recorded
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    systemAudio: 'include',
+  });
+  if (!display.getAudioTracks().length) {
+    display.getTracks().forEach(t => t.stop());
+    throw new Error('No audio was shared. Tick "Share tab audio" / "Share system audio" in the prompt.');
+  }
+  return display;
+}
+
+function getMic() {
+  const deviceId = els.device.value;
+  return navigator.mediaDevices.getUserMedia({
+    audio: { deviceId: deviceId ? { exact: deviceId } : undefined, echoCancellation: true, noiseSuppression: true },
+  });
+}
+
+// Streams in channel order: [mic] | [computer] | [mic, computer].
+async function getStreams(mode) {
+  if (mode === 'mic') return [await getMic()];
+  const display = await getDisplayAudio();
+  if (mode === 'system') return [display];
+  try {
+    return [await getMic(), display];
+  } catch (e) {
+    display.getTracks().forEach(t => t.stop());
+    throw e;
+  }
+}
+
+// ---------- Deepgram connection ----------
+
+async function getToken() {
+  const res = await fetch('/token');
+  const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+async function connect(s) {
+  const auth = await getToken();
+  if (s.stopping) return;
+  const conn = { id: (++connSeq).toString(36) + Date.now().toString(36), startFrame: null, opened: false, done: {} };
+  const params = listenParams({ model: auth.model, language: s.language, rate: s.rate, channels: s.channels });
+  conn.ws = new WebSocket('wss://api.deepgram.com/v1/listen?' + params, ['bearer', auth.access_token]);
+  s.conn = conn;
+
+  conn.ws.onopen = () => {
+    conn.opened = true;
+    s.everConnected = true;
+    s.retries = 0;
+    showError('');
+    setStatus('Listening');
+    const backlog = s.backlog;
+    s.backlog = [];
+    backlog.forEach(chunk => sendChunk(s, chunk));
+  };
+  conn.ws.onmessage = e => onMessage(s, conn, JSON.parse(e.data));
+  conn.ws.onclose = e => onClose(s, conn, e);
+}
+
+function sendChunk(s, chunk) {
+  const c = s.conn;
+  const maxFrames = MAX_BACKLOG_S * s.rate;
+  if (c?.opened && c.ws.readyState === WebSocket.OPEN) {
+    if (c.startFrame === null) c.startFrame = chunk.frame;
+    c.ws.send(chunk.pcm.slice(0)); // send a copy: the chunk may be replayed after a reconnect
+    trimByAge(s.sent, chunk.frame, maxFrames).push(chunk);
+  } else {
+    trimByAge(s.backlog, chunk.frame, maxFrames).push(chunk);
+  }
+}
+
+function onMessage(s, conn, msg) {
+  if (session === s) {
+    if (msg.type === 'SpeechStarted') setStatus('<b>Hearing speech</b>');
+    if (msg.type === 'UtteranceEnd') setStatus('Listening');
+  }
+  const result = parseResult(msg);
+  if (!result) return;
+  if (result.isFinal) {
+    commit(s, conn, result.channel, result.words);
+    delete s.interim[result.channel];
+    conn.done[result.channel] = (conn.startFrame ?? 0) + Math.round(result.endSec * s.rate);
+  } else {
+    s.interim[result.channel] = { conn, words: result.words };
+  }
+  render();
+}
+
+function onClose(s, conn, e) {
+  if (s.conn !== conn) return;
+  s.interim = {};
+  s.conn = null;
+  if (s.stopping) return render();
+  if (!s.everConnected) {
+    // Never got in: almost always bad settings, so retrying won't help.
+    showError(e.reason
+      ? `Deepgram refused the connection: ${e.reason}`
+      : 'Could not connect to Deepgram. Check your internet connection, or try another language.');
+    return stop();
+  }
+  // Replay audio Deepgram hadn't finalised yet, so words mid-flight aren't lost.
+  const from = firstUnfinalisedFrame(conn.done, conn.startFrame, s.channels);
+  s.backlog = chunksFrom(s.sent, from).concat(s.backlog);
+  s.sent = [];
+  reconnect(s);
+}
+
+function reconnect(s) {
+  if (s.stopping) return;
+  if (s.retries >= MAX_RETRIES) {
+    showError('Lost the connection to Deepgram and could not reconnect.');
+    return stop();
+  }
+  const delay = Math.min(8000, 500 * 2 ** s.retries++);
+  setStatus('Connection lost, reconnecting… (audio is being kept)');
+  render();
+  s.retryTimer = setTimeout(() => connect(s).catch(() => reconnect(s)), delay);
+}
+
+// ---------- session control ----------
+
+async function start() {
+  showError('');
+  if (!window.AudioWorkletNode) return showError('This browser does not support live audio processing.');
+  const mode = els.source.value;
+  els.toggle.disabled = true;
+  setStatus('Starting…');
+
+  let streams;
+  try {
+    await getToken(); // fail fast, before asking for mic or screen access
+    streams = await getStreams(mode);
+  } catch (e) {
+    els.toggle.disabled = false;
+    setStatus('Stopped.');
+    return showError(/^(Deepgram|No audio)/.test(e.message) ? e.message : 'Could not start: ' + e.message);
+  }
+  if (mode !== 'system') listDevices();
+
+  const ctx = new AudioContext();
+  try {
+    await ctx.audioWorklet.addModule(workletUrl);
+    await ctx.resume();
+  } catch (e) {
+    streams.forEach(st => st.getTracks().forEach(t => t.stop()));
+    ctx.close();
+    els.toggle.disabled = false;
+    setStatus('Stopped.');
+    return showError('Could not start audio processing: ' + e.message);
+  }
+  const channels = streams.length;
+  const node = new AudioWorkletNode(ctx, 'pcm-tap', {
+    channelCount: channels, channelCountMode: 'explicit', channelInterpretation: channels > 1 ? 'discrete' : 'speakers',
+  });
+  const sources = streams.map(st => ctx.createMediaStreamSource(new MediaStream(st.getAudioTracks())));
+  if (channels > 1) {
+    const merger = ctx.createChannelMerger(channels);
+    sources.forEach((src, i) => src.connect(merger, 0, i));
+    merger.connect(node);
+    sources.push(merger);
+  } else {
+    sources[0].connect(node);
+  }
+  node.connect(ctx.destination); // outputs silence; keeps the node running
+
+  const s = {
+    mode, streams, ctx, node, sources, channels, rate: ctx.sampleRate, language: els.language.value,
+    offset: offsetMs, frames: 0, backlog: [], sent: [], interim: {}, conn: null,
+    newParagraph: true, stopping: false, everConnected: false, retries: 0,
+  };
+  session = s;
+
+  node.port.onmessage = ({ data }) => {
+    const chunk = { frame: s.frames, frames: data.frames, pcm: data.pcm };
+    s.frames += data.frames;
+    sendChunk(s, chunk);
+    els.level.style.width = Math.min(100, Math.sqrt(data.rms / 0.25) * 100) + '%';
+  };
+  streams.forEach(st => st.getAudioTracks().forEach(t => (t.onended = () => session === s && stop())));
+  s.clockTimer = setInterval(render, 1000);
+
+  els.toggle.disabled = false;
+  els.toggle.setAttribute('aria-pressed', 'true');
+  els.toggle.setAttribute('aria-label', 'Stop transcribing');
+  els.icon.innerHTML = STOP;
+  setStatus('Connecting…');
+  connect(s).catch(e => {
+    if (session !== s) return;
+    showError('Could not get a Deepgram token: ' + e.message);
+    stop();
+  });
+}
+
+function stop() {
+  const s = session;
+  if (!s) return;
+  session = null;
+  s.stopping = true;
+  clearInterval(s.clockTimer);
+  clearTimeout(s.retryTimer);
+  s.node.port.onmessage = null;
+  s.node.disconnect();
+  s.sources.forEach(n => n.disconnect());
+  s.streams.forEach(st => st.getTracks().forEach(t => t.stop()));
+  s.ctx.close();
+  offsetMs = s.offset + (s.frames / s.rate) * 1000 + 1000;
+
+  // Ask Deepgram to finish; its final results still arrive and get committed.
+  const c = s.conn;
+  if (c?.opened && c.ws.readyState === WebSocket.OPEN) {
+    c.ws.send(JSON.stringify({ type: 'CloseStream' }));
+    setTimeout(() => c.ws.readyState < WebSocket.CLOSING && c.ws.close(), 5000);
+  } else c?.ws.close();
+
+  els.toggle.disabled = false;
+  els.toggle.setAttribute('aria-pressed', 'false');
+  els.toggle.setAttribute('aria-label', 'Start transcribing');
+  els.icon.innerHTML = MIC;
+  els.level.style.width = '0';
+  setStatus('Stopped. Press the mic to continue.');
+  render();
+}
+
+async function listDevices() {
+  try {
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.label);
+    if (!devices.length) return;
+    const current = els.device.value;
+    els.device.replaceChildren(new Option('Default', ''), ...devices.map(d => new Option(d.label, d.deviceId)));
+    els.device.value = devices.some(d => d.deviceId === current) ? current : '';
+  } catch {}
+}
+
+function updateSourceUi() {
+  els.device.disabled = els.source.value === 'system';
+  els.note.textContent = NOTES[els.source.value] || '';
+  els.note.hidden = !NOTES[els.source.value];
+}
+
+// ---------- wiring ----------
+
+els.toggle.onclick = () => (session ? stop() : start());
+els.device.onchange = () => { if (session && session.mode !== 'system') { stop(); start(); } };
+els.language.onchange = () => { if (session) { stop(); start(); } };
+els.source.onchange = () => { updateSourceUi(); if (session) stop(); };
+navigator.mediaDevices?.addEventListener?.('devicechange', listDevices);
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.target.closest('select, input, button')) { e.preventDefault(); els.toggle.click(); }
+});
+$('copy').onclick = async () => {
+  try { await navigator.clipboard.writeText(doc.toText()); $('copy').textContent = 'Copied'; }
+  catch { $('copy').textContent = 'Copy failed'; }
+  setTimeout(() => ($('copy').textContent = 'Copy'), 1500);
+};
+$('download').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([doc.toText()], { type: 'text/plain' }));
+  a.download = `transcript-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('clear').onclick = () => {
+  if (doc.lines.length && !confirm('Clear the transcript and speaker names?')) return;
+  doc.clear();
+  offsetMs = 0;
+  if (session) { session.offset = -(session.frames / session.rate) * 1000; session.newParagraph = true; }
+  save();
+  view.full = true;
+  view.speakersSig = '';
+  render();
+};
+
+load();
+els.icon.innerHTML = MIC;
+updateSourceUi();
+listDevices();
+render();
+</script>
+</body>
+</html>
